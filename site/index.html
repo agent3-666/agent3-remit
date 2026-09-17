@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent3 Remit</title><style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin:0; background:#0a0a0a; color:#f2f2f2;
+  font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",system-ui,sans-serif; }
+.wrap { max-width: 1000px; margin:0 auto; padding:44px 20px 80px; }
+h1 { font-size:32px; margin:0 0 6px; letter-spacing:-.4px; }
+.sub { color:#9a9a9a; margin:0 0 30px; font-size:17px; }
+h2 { font-size:19px; margin:34px 0 12px; }
+.panel { border:1px solid #262626; border-radius:12px; background:#0e0e0e; padding:18px 20px; margin-bottom:14px; }
+.panel.blocked { border-color:#4a2a22; }
+.panel.payable { border-color:#d4e85a; }
+.name { font-size:18px; font-weight:600; }
+.asks { color:#d4e85a; }
+table { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:6px; }
+th { text-align:left; color:#9a9a9a; font-weight:500; padding:6px 8px; border-bottom:1px solid #262626; }
+td { padding:7px 8px; border-bottom:1px solid #1b1b1b; color:#cfcfcf; vertical-align:top; }
+.blocker { color:#ff8b6b; }
+.field { color:#e8e8e8; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; }
+.probe { font-size:13px; color:#9a9a9a; margin-top:6px; }
+.probe b { color:#cfcfcf; font-weight:500; }
+.note { color:#9a9a9a; font-size:13.5px; border-top:1px solid #1b1b1b; margin-top:34px; padding-top:16px; }
+code { background:#1b1b1b; padding:1px 6px; border-radius:4px; font-size:12.5px; }
+.state { display:inline-block; border:1px solid #333; border-radius:20px; padding:3px 12px; font-size:12.5px; color:#cfcfcf; }
+a { color:#d4e85a; }
+</style></head>
+<body><div class="wrap">
+<h1>Agent3 Remit</h1>
+<p class="sub">Turn a published quote into money that can actually move. When the published record is
+not enough to pay anyone, name the field that is missing, and never guess it.</p>
+
+<h2>What it read</h2>
+<div class="panel">
+It read <a href="https://a2a-hub-chi.vercel.app/api/resources">https://a2a-hub-chi.vercel.app</a>, the live
+Agent3 Hub directory, over its public API. <b>9 records.</b> Read-only: this service
+sits alongside the Hub and never writes to it. Read at 2026-09-17 18:38 UTC.
+</div>
+
+<h2>How this directory writes payment terms</h2>
+<div class="panel">
+<table>
+<tr><th>written under</th><th>records</th><th>which</th></tr>
+<tr><td class="field">payment.mode</td><td>5</td><td>Agent3 Google Search API (Paid), Agent3 Google Search API (Free), Agent3 X API (Free), CryptoParadigm, pizza_seller_agent</td></tr>
+<tr><td class="field">payment.model</td><td>3</td><td>Telegram Content Search, Agent3 Web Reader, Agent3 Tavily Search</td></tr>
+<tr><td class="field">both</td><td>0</td><td>-</td></tr>
+<tr><td class="field">neither</td><td>1</td><td>Agent3 Telegram Notification</td></tr>
+</table>
+<p class="probe">A caller that reads only <code>payment.mode</code> sees nothing at all for
+4 of these records. That is worse than it
+sounds: an absent key and a free service are the same value, so those records look free rather than
+unreadable. Both keys are read here, and neither is chosen as the winner.</p>
+</div>
+
+<h2>Priced records</h2>
+<div class="panel blocked"><div class="name">Agent3 Google Search API (Paid) &nbsp; <span class="asks">asks 0.01 USD</span></div><div class="probe"><b>https://hub.agent3.space/api/proxy/invoke</b><br>no answer: no response (EOF occurred in violation of protocol (_ssl.c:1129))</div><div class="probe"><b>https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config</b><br>answers: 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge</div><table><tr><th>field</th><th>why this stops the payment</th></tr><tr><td class="field">payment.gateway</td><td class="blocker">https://hub.agent3.space/api/proxy/invoke did not answer, so it cannot tell us who to pay</td></tr><tr><td class="field">payment.configUrl</td><td class="blocker">https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config answers 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge, so it cannot tell us who to pay</td></tr><tr><td class="field">payee address</td><td class="blocker">no address to pay: the record publishes none, and the endpoints that could supply one did not</td></tr></table></div>
+<div class="panel"><b>Says it is free, so nothing to settle:</b> Telegram Content Search, Agent3 Web Reader, Agent3 Tavily Search, Agent3 Google Search API (Free), Agent3 X API (Free), CryptoParadigm, pizza_seller_agent</div>
+<div class="panel"><b>Says nothing about payment at all:</b> Agent3 Telegram Notification
+<p class="probe">Silence is not the same as free. A caller that treats a missing payment block as
+free will call this expecting to owe nothing, which is a guess about somebody else's terms.</p></div>
+
+<h2>Settlement</h2>
+<div class="panel"><span class="state">No KeeperHub key is configured, so this service cannot settle. It says so rather than reporting a payment that did not happen.</span><p class="probe">When a payment can be made, it goes through the
+KeeperHub Direct Execution API: dry run first, then one broadcast under an idempotency key derived
+from the job rather than the attempt, then the receipt is read back from the chain. Asking twice for
+the same job replays the first result instead of paying twice.</p></div>
+
+<div class="note">
+<p><b>What the probes do and do not show.</b> Each probe is one request from one machine. A host that
+does not answer here may answer somewhere else, and this page does not claim otherwise. What makes
+the reading worth something is that the probes run together: when one endpoint is silent while the
+directory's own host and other endpoints answer in the same moment, the silence is about that
+endpoint rather than about the network here.</p>
+<p><b>Nothing is filled in.</b> Where a field is missing the page says which field. A guessed
+recipient or a guessed chain produces a transaction that looks exactly like a correct one until the
+money is gone.</p>
+</div>
+</div></body></html>
