@@ -87,7 +87,14 @@ class KeeperHub:
     def can_settle(self) -> bool:
         return bool(self.api_key)
 
-    def _call(self, method: str, path: str, body: dict | None = None, extra_headers: dict | None = None) -> Attempt:
+    def _call(
+        self,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        extra_headers: dict | None = None,
+        retries: int = 3,
+    ) -> Attempt:
         url = f"{self.base_url}{path}"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -122,6 +129,13 @@ class KeeperHub:
                 note = "rate limited (the API allows 60 requests per minute per key)"
             return Attempt(path, err.code, False, parsed, note)
         except Exception as err:  # network-level
+            # A cut connection is not an answer: it says nothing about whether KeeperHub would
+            # accept the request. HTTP codes above are answers and are returned at once; only
+            # transport failures reach here, and only these are retried. The broadcast carries an
+            # idempotency key, so a retry after a cut cannot become a second payment.
+            if retries > 0:
+                time.sleep(2)
+                return self._call(method, path, body, extra_headers, retries - 1)
             return Attempt(path, None, False, {"error": str(err)}, "no response from KeeperHub")
 
     def broadcaster(self, recipient: str, amount: str, token_address: str | None = None) -> str | None:

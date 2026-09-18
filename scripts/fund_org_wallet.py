@@ -61,6 +61,16 @@ def main() -> int:
     parser.add_argument("--send", action="store_true", help="actually broadcast; without this nothing is sent")
     args = parser.parse_args()
 
+    # Signing libraries reject a mixed-case address that is not correctly checksummed, and
+    # KeeperHub reports the wallet in lowercase. Normalise here so an address copied straight
+    # out of an API response is usable rather than a TypeError at signing time.
+    try:
+        from eth_utils import to_checksum_address
+
+        args.to = to_checksum_address(args.to)
+    except ImportError:
+        pass
+
     funder = os.environ.get("SEED_FUNDER_ADDRESS", "0x8e5830D9Cc2c88A330698A6B334ACF9c07c2acD4")
     balance = int(str(rpc("eth_getBalance", [funder, "latest"])), 16)
     gas_price = int(str(rpc("eth_gasPrice", [])), 16)
@@ -123,7 +133,13 @@ def main() -> int:
         "chainId": CHAIN_ID,
     }
     signed = account.sign_transaction(tx)
-    tx_hash = str(rpc("eth_sendRawTransaction", ["0x" + signed.raw_transaction.hex().lstrip("0x")]))
+    # lstrip("0x") strips every leading "0" and "x" character, not the prefix, so a signed
+    # transaction whose hex begins with a zero loses it and the node rejects an odd-length
+    # string. removeprefix takes the prefix and nothing else.
+    raw = signed.raw_transaction.hex()
+    raw = "0x" + raw.removeprefix("0x")
+    assert len(raw) % 2 == 0, f"signed transaction hex has odd length: {len(raw)}"
+    tx_hash = str(rpc("eth_sendRawTransaction", [raw]))
     print(f"\nsent {amount} ETH to {args.to}")
     print(f"transaction: {tx_hash}")
     print(f"explorer:    https://sepolia.etherscan.io/tx/{tx_hash}")

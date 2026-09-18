@@ -40,6 +40,30 @@ RPC = os.environ.get("SEPOLIA_RPC", "https://ethereum-sepolia-rpc.publicnode.com
 EXPLORER = "https://sepolia.etherscan.io/tx/"
 
 
+def _rpc(body: bytes, attempts: int = 5):
+    """Post a JSON-RPC call, retrying transport failures.
+
+    This machine's network cuts TLS connections after a few seconds, and a cut connection is not an
+    answer: it says nothing about the chain. An RPC error code is an answer and is raised at once.
+    """
+    last = None
+    for attempt in range(attempts):
+        request = urllib.request.Request(
+            RPC, data=body, headers={"Content-Type": "application/json", "User-Agent": "agent3-remit/1.0"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode())
+        except Exception as err:  # transport, not the chain
+            last = err
+            time.sleep(2 * (attempt + 1))
+            continue
+        if "error" in payload:
+            raise RuntimeError(payload["error"])
+        return payload["result"]
+    raise RuntimeError(f"no node answered after {attempts} attempts: {last}")
+
+
 def tx_count(address: str) -> int:
     """Read the wallet's transaction count from a public node.
 
@@ -49,28 +73,42 @@ def tx_count(address: str) -> int:
     The count is of transactions this address has *sent*, so the address to watch is the wallet
     KeeperHub broadcasts from, not the one being paid. Watching the payee would report no movement
     for every attempt, which reads exactly like a proven replay while proving nothing.
+
+    MEASURED, not assumed: on this account KeeperHub settles through a delegated (EIP-7702) call
+    submitted by its own relayer, so the organisation wallet's count increments once when the
+    delegation is authorised and then stays put while real transfers keep going out. The count is
+    still reported below because it is what a reader expects to see, but it cannot carry the proof:
+    a number that never moves cannot tell a replay from a payment. The balance received by the
+    payee is what discriminates, and the third attempt exists to show that it does.
     """
     body = json.dumps(
         {"jsonrpc": "2.0", "id": 1, "method": "eth_getTransactionCount", "params": [address, "latest"]}
     ).encode()
-    request = urllib.request.Request(
-        RPC, data=body, headers={"Content-Type": "application/json", "User-Agent": "agent3-remit/1.0"}
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        payload = json.loads(response.read().decode())
-    if "error" in payload:
-        raise RuntimeError(payload["error"])
-    return int(str(payload["result"]), 16)
+    return int(str(_rpc(body)), 16)
+
+
+def balance(address: str) -> int:
+    """Read an address's balance in wei from a public node, for the same reason as tx_count."""
+    body = json.dumps(
+        {"jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": [address, "latest"]}
+    ).encode()
+    return int(str(_rpc(body)), 16)
 
 
 def settle(client: KeeperHub, payee: str, amount: str, task_id: str, label: str, wallet: str) -> dict:
     before = tx_count(wallet)
+    paid_before = balance(payee)
     result = client.transfer(recipient=payee, amount=amount, task_id=task_id)
-    # The count is read after the receipt is terminal, so a pending broadcast is not mistaken for a
-    # transaction that never happened.
+    # Read after the receipt is terminal, so a pending broadcast is not mistaken for a transaction
+    # that never happened.
     time.sleep(3)
     after = tx_count(wallet)
-    print(f"  {label:26} count {before} -> {after}   tx {result.tx_hash or '-'}")
+    paid_after = balance(payee)
+    received = paid_after - paid_before
+    print(
+        f"  {label:26} received {received / 10**18:.5f} ETH   count {before} -> {after}"
+        f"   tx {result.tx_hash or '-'}"
+    )
     return {
         "label": label,
         "task_id": task_id,
@@ -81,6 +119,10 @@ def settle(client: KeeperHub, payee: str, amount: str, task_id: str, label: str,
         "wallet_tx_count_before": before,
         "wallet_tx_count_after": after,
         "moved": after - before,
+        "payee": payee,
+        "payee_wei_before": paid_before,
+        "payee_wei_after": paid_after,
+        "payee_received_wei": received,
     }
 
 
@@ -137,7 +179,7 @@ def main() -> int:
     attempts = [
         settle(client, args.payee, args.amount, plan.quote_digest, "the quote", wallet),
         settle(client, args.payee, args.amount, plan.quote_digest, "the same quote again", wallet),
-        settle(client, args.payee, args.amount, plan.quote_digest + "-different", "a different job", wallet),
+        settle(client, args.payee, args.amount, f"{plan.quote_digest}-different-{int(time.time())}", "a different job", wallet),
     ]
 
     first, replay, different = attempts
@@ -146,22 +188,27 @@ def main() -> int:
     # settlement above, so every reading here is about the wrong wallet. Checked after the first
     # attempt rather than before it: a newly created organisation wallet legitimately starts at zero,
     # and refusing to run on that would reject the very first settlement this project ever makes.
-    if first["wallet_tx_count_after"] == 0:
+    if first["payee_received_wei"] == 0 and different["payee_received_wei"] == 0:
         print(
-            f"\n{wallet} has still sent no transactions after a settlement, so it is not the account "
-            "that broadcast it. Every count below would be about the wrong wallet. Pass the "
-            "organisation wallet with --wallet."
+            f"\nNothing reached {args.payee} on either of the two attempts that should have paid it, "
+            "so this reading cannot tell a replay from a payment. Refusing to report a proof that "
+            "would be vacuous."
         )
         return 2
 
-    # A wallet that never moves would satisfy "the replay moved nothing" for the wrong reason, so the
-    # first and third attempts are what make the second one mean anything.
+    # "The replay paid nothing" is worth nothing on its own: a measurement that always reads zero
+    # satisfies it without any replay happening. The first and third attempts are what make the
+    # second one mean something, because the same measurement moves for both of them.
+    amount_wei = int(round(float(args.amount) * 10**18))
     checks = {
-        "the first settlement moved the chain": first["moved"] == 1,
-        "the replay moved nothing": replay["moved"] == 0,
+        "the first settlement paid the payee": first["payee_received_wei"] == amount_wei,
+        "the replay paid nothing": replay["payee_received_wei"] == 0,
         "the replay returned the same execution": replay["execution_id"] == first["execution_id"],
         "the replay returned the same transaction": replay["tx_hash"] == first["tx_hash"],
-        "a different job moved the chain again": different["moved"] == 1,
+        "a different job paid again": different["payee_received_wei"] == amount_wei,
+        "a different job got a different transaction": (
+            different["tx_hash"] is not None and different["tx_hash"] != first["tx_hash"]
+        ),
     }
     print("")
     for label, passed in checks.items():

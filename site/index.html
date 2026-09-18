@@ -36,12 +36,12 @@ not enough to pay anyone, name the field that is missing, and never guess it.</p
 <div class="panel">
 It read <a href="https://a2a-hub-chi.vercel.app/api/resources">https://a2a-hub-chi.vercel.app</a>, the live
 Agent3 Hub directory, over its public API. <b>9 records.</b> Read-only: this service
-sits alongside the Hub and never writes to it. Read at 2026-09-17 19:45 UTC.
+sits alongside the Hub and never writes to it. Read at 2026-09-18 08:39 UTC.
 <p class="probe"><b>The snapshot every quote on this page is pinned to.</b>
 <code>sha256</code> of the exact bytes that endpoint served:
 <code>ede78348d812414a8014f007ae3ce4ad9bcb7186f563fe94c5d51951809e48b2</code>,
 over 127185 bytes, read at
-2026-09-17T19:45:49+00:00. Anybody can recompute it:
+2026-09-18T08:39:33+00:00. Anybody can recompute it:
 <code>curl -s https://a2a-hub-chi.vercel.app/api/resources | shasum -a 256</code>. The digest
 names <b>that one reading</b>. Getting a different one later is the mechanism working: the listing
 has changed, so it is a different quote, and a payment agreed against the old one does not carry
@@ -67,15 +67,15 @@ unreadable. Both keys are read here, and neither is chosen as the winner.</p>
 </div>
 
 <h2>Priced records</h2>
-<div class="panel blocked"><div class="name">Agent3 Google Search API (Paid) &nbsp; <span class="asks">asks 0.01 USD</span></div><div class="probe"><b>https://hub.agent3.space/api/proxy/invoke</b><br>no answer: no response ([SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032))</div><div class="probe"><b>https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config</b><br>answers: 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge</div><table><tr><th>field</th><th>why this stops the payment</th></tr><tr><td class="field">payment.gateway</td><td class="blocker">https://hub.agent3.space/api/proxy/invoke did not answer, so it cannot tell us who to pay</td></tr><tr><td class="field">payment.configUrl</td><td class="blocker">https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config answers 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge, so it cannot tell us who to pay</td></tr><tr><td class="field">payee address</td><td class="blocker">no address to pay: the record publishes none, and the endpoints that could supply one did not</td></tr></table></div>
+<div class="panel blocked"><div class="name">Agent3 Google Search API (Paid) &nbsp; <span class="asks">asks 0.01 USD</span></div><div class="probe"><b>https://hub.agent3.space/api/proxy/invoke</b><br>no answer: no response (EOF occurred in violation of protocol (_ssl.c:1129))</div><div class="probe"><b>https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config</b><br>answers: 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge</div><table><tr><th>field</th><th>why this stops the payment</th></tr><tr><td class="field">payment.gateway</td><td class="blocker">https://hub.agent3.space/api/proxy/invoke did not answer, so it cannot tell us who to pay</td></tr><tr><td class="field">payment.configUrl</td><td class="blocker">https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config answers 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge, so it cannot tell us who to pay</td></tr><tr><td class="field">payee address</td><td class="blocker">no address to pay: the record publishes none, and the endpoints that could supply one did not</td></tr></table></div>
 <div class="panel"><b>Says it is free, so nothing to settle:</b> Telegram Content Search, Agent3 Web Reader, Agent3 Tavily Search, Agent3 Google Search API (Free), Agent3 X API (Free), CryptoParadigm, pizza_seller_agent</div>
 <div class="panel"><b>Says nothing about payment at all:</b> Agent3 Telegram Notification
 <p class="probe">Silence is not the same as free. A caller that treats a missing payment block as
 free will call this expecting to owe nothing, which is a guess about somebody else's terms.</p></div>
 
 <h2>Settlement</h2>
-
-<div class="panel"><span class="state">No KeeperHub key is configured, so this service cannot settle. It says so rather than reporting a payment that did not happen.</span><p class="probe">When a payment can be made, it goes through the
+<div class="panel payable"><b>A settlement, and the same job asked for twice.</b><table><tr><th>attempt</th><th>transaction</th><th>sent by this wallet</th><th></th></tr><tr><td>the quote</td><td class="field">0xeca3f704eef9de58b3b2012e400e6e79e9f7d437996d38439d3922debbc1e493</td><td>1 &rarr; 1</td><td>nothing new reached the chain</td></tr><tr><td>the same quote again</td><td class="field">0xeca3f704eef9de58b3b2012e400e6e79e9f7d437996d38439d3922debbc1e493</td><td>1 &rarr; 1</td><td>nothing new reached the chain</td></tr><tr><td>a different job</td><td class="field">0x2839c04aab86d0dae20043617123b3c5fd6f698c090047f285d7d11dae557bf1</td><td>1 &rarr; 1</td><td>nothing new reached the chain</td></tr></table><p class="probe">The count either side of each attempt is of transactions sent by 0x57a3c629f1279a681b2f0f3d69a16d99a6614d69, read from <code>https://ethereum-sepolia-rpc.publicnode.com</code> rather than from KeeperHub. "I did not send a second one" is the one statement that should not come from whoever would have sent it. These readings are from the run recorded at 2026-09-18T08:39:13+00:00; the wallet keeps sending after that, so the numbers belong to that run rather than describing the wallet today.</p><p class="probe">Transaction: <a href="https://sepolia.etherscan.io/tx/0xeca3f704eef9de58b3b2012e400e6e79e9f7d437996d38439d3922debbc1e493">https://sepolia.etherscan.io/tx/0xeca3f704eef9de58b3b2012e400e6e79e9f7d437996d38439d3922debbc1e493</a></p></div>
+<div class="panel"><span class="state">A KeeperHub key is configured, so settlement is live</span><p class="probe">When a payment can be made, it goes through the
 KeeperHub Direct Execution API: dry run first, then one broadcast under an idempotency key derived
 from the job rather than the attempt, then the receipt is read back from the chain. Asking twice for
 the same job replays the first result instead of paying twice.</p></div>

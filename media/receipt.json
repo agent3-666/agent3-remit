@@ -1,0 +1,75 @@
+{
+  "recorded_at": "2026-09-18T08:39:13+00:00",
+  "chain_id": 11155111,
+  "record": "Agent3 Google Search API (Paid)",
+  "quote": {
+    "resource_id": "agent3-google-search-api-paid--1767630350903",
+    "record": "Agent3 Google Search API (Paid)",
+    "operation": "Google Web Search",
+    "published_amount": 0.01,
+    "published_currency": "USD",
+    "directory_snapshot": "ede78348d812414a8014f007ae3ce4ad9bcb7186f563fe94c5d51951809e48b2",
+    "directory_read_at": "2026-09-18T08:38:05+00:00"
+  },
+  "quote_digest": "b98593ac89b45e471f8b8ad4b9aada97334a1ebd57722e66fa26830064dbc311",
+  "amount": "0.00001",
+  "payee": "0x8e5830D9Cc2c88A330698A6B334ACF9c07c2acD4",
+  "wallet_counted": "0x57a3c629f1279a681b2f0f3d69a16d99a6614d69",
+  "counted_from": "https://ethereum-sepolia-rpc.publicnode.com",
+  "explorer": "https://sepolia.etherscan.io/tx/",
+  "attempts": [
+    {
+      "label": "the quote",
+      "task_id": "b98593ac89b45e471f8b8ad4b9aada97334a1ebd57722e66fa26830064dbc311",
+      "settled": true,
+      "execution_id": "8zppzgydiuw1lkatacmba",
+      "tx_hash": "0xeca3f704eef9de58b3b2012e400e6e79e9f7d437996d38439d3922debbc1e493",
+      "reason": "KeeperHub executed the transfer and the receipt was read back from the chain",
+      "wallet_tx_count_before": 1,
+      "wallet_tx_count_after": 1,
+      "moved": 0,
+      "payee": "0x8e5830D9Cc2c88A330698A6B334ACF9c07c2acD4",
+      "payee_wei_before": 58652375293497476,
+      "payee_wei_after": 58662375293497476,
+      "payee_received_wei": 10000000000000
+    },
+    {
+      "label": "the same quote again",
+      "task_id": "b98593ac89b45e471f8b8ad4b9aada97334a1ebd57722e66fa26830064dbc311",
+      "settled": true,
+      "execution_id": "8zppzgydiuw1lkatacmba",
+      "tx_hash": "0xeca3f704eef9de58b3b2012e400e6e79e9f7d437996d38439d3922debbc1e493",
+      "reason": "KeeperHub executed the transfer and the receipt was read back from the chain",
+      "wallet_tx_count_before": 1,
+      "wallet_tx_count_after": 1,
+      "moved": 0,
+      "payee": "0x8e5830D9Cc2c88A330698A6B334ACF9c07c2acD4",
+      "payee_wei_before": 58662375293497476,
+      "payee_wei_after": 58662375293497476,
+      "payee_received_wei": 0
+    },
+    {
+      "label": "a different job",
+      "task_id": "b98593ac89b45e471f8b8ad4b9aada97334a1ebd57722e66fa26830064dbc311-different-1789720727",
+      "settled": true,
+      "execution_id": "nz71kcq02ljbz9iltu5fv",
+      "tx_hash": "0x2839c04aab86d0dae20043617123b3c5fd6f698c090047f285d7d11dae557bf1",
+      "reason": "KeeperHub executed the transfer and the receipt was read back from the chain",
+      "wallet_tx_count_before": 1,
+      "wallet_tx_count_after": 1,
+      "moved": 0,
+      "payee": "0x8e5830D9Cc2c88A330698A6B334ACF9c07c2acD4",
+      "payee_wei_before": 58662375293497476,
+      "payee_wei_after": 58672375293497476,
+      "payee_received_wei": 10000000000000
+    }
+  ],
+  "checks": {
+    "the first settlement paid the payee": true,
+    "the replay paid nothing": true,
+    "the replay returned the same execution": true,
+    "the replay returned the same transaction": true,
+    "a different job paid again": true,
+    "a different job got a different transaction": true
+  }
+}
