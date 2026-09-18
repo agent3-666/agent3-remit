@@ -36,8 +36,20 @@ not enough to pay anyone, name the field that is missing, and never guess it.</p
 <div class="panel">
 It read <a href="https://a2a-hub-chi.vercel.app/api/resources">https://a2a-hub-chi.vercel.app</a>, the live
 Agent3 Hub directory, over its public API. <b>9 records.</b> Read-only: this service
-sits alongside the Hub and never writes to it. Read at 2026-09-17 18:38 UTC.
+sits alongside the Hub and never writes to it. Read at 2026-09-17 19:45 UTC.
+<p class="probe"><b>The snapshot every quote on this page is pinned to.</b>
+<code>sha256</code> of the exact bytes that endpoint served:
+<code>ede78348d812414a8014f007ae3ce4ad9bcb7186f563fe94c5d51951809e48b2</code>,
+over 127185 bytes, read at
+2026-09-17T19:45:49+00:00. Anybody can recompute it:
+<code>curl -s https://a2a-hub-chi.vercel.app/api/resources | shasum -a 256</code>. The digest
+names <b>that one reading</b>. Getting a different one later is the mechanism working: the listing
+has changed, so it is a different quote, and a payment agreed against the old one does not carry
+over to it.</p>
 </div>
+
+<h2>Calling the listing</h2>
+<div class="panel"><div class="name">Agent3 Google Search API (Paid)</div><table><tr><th>what was done</th><th>address</th><th>what came back</th></tr><tr><td>call the published interface URL</td><td class="field">https://agent3-x-api.vercel.app/api/v1/google/paid</td><td>404: error: Unknown endpoint</td></tr><tr><td>the service named its own endpoints, so try the first one it offered</td><td class="field">https://agent3-x-api.vercel.app/api/v1/google/search?q=keeperhub</td><td>200: offered [&#x27;search&#x27;, &#x27;news&#x27;, &#x27;images&#x27;, &#x27;places&#x27;]; 7 results, first: KeeperHub — Execution Layer for Onchain Agents — https://keeperhub.com/</td></tr></table><p class="probe">The address that answered was <b>corrected by the service itself, not published by the directory</b>. So the service itself runs, and the half that does not work is the half that takes money.</p><p class="probe blocker">MISSING operations: the record names operations but publishes no path or method for any of them, so which URL serves which operation is not stated</p></div>
 
 <h2>How this directory writes payment terms</h2>
 <div class="panel">
@@ -55,19 +67,24 @@ unreadable. Both keys are read here, and neither is chosen as the winner.</p>
 </div>
 
 <h2>Priced records</h2>
-<div class="panel blocked"><div class="name">Agent3 Google Search API (Paid) &nbsp; <span class="asks">asks 0.01 USD</span></div><div class="probe"><b>https://hub.agent3.space/api/proxy/invoke</b><br>no answer: no response (EOF occurred in violation of protocol (_ssl.c:1129))</div><div class="probe"><b>https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config</b><br>answers: 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge</div><table><tr><th>field</th><th>why this stops the payment</th></tr><tr><td class="field">payment.gateway</td><td class="blocker">https://hub.agent3.space/api/proxy/invoke did not answer, so it cannot tell us who to pay</td></tr><tr><td class="field">payment.configUrl</td><td class="blocker">https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config answers 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge, so it cannot tell us who to pay</td></tr><tr><td class="field">payee address</td><td class="blocker">no address to pay: the record publishes none, and the endpoints that could supply one did not</td></tr></table></div>
+<div class="panel blocked"><div class="name">Agent3 Google Search API (Paid) &nbsp; <span class="asks">asks 0.01 USD</span></div><div class="probe"><b>https://hub.agent3.space/api/proxy/invoke</b><br>no answer: no response ([SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032))</div><div class="probe"><b>https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config</b><br>answers: 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge</div><table><tr><th>field</th><th>why this stops the payment</th></tr><tr><td class="field">payment.gateway</td><td class="blocker">https://hub.agent3.space/api/proxy/invoke did not answer, so it cannot tell us who to pay</td></tr><tr><td class="field">payment.configUrl</td><td class="blocker">https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config answers 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge, so it cannot tell us who to pay</td></tr><tr><td class="field">payee address</td><td class="blocker">no address to pay: the record publishes none, and the endpoints that could supply one did not</td></tr></table></div>
 <div class="panel"><b>Says it is free, so nothing to settle:</b> Telegram Content Search, Agent3 Web Reader, Agent3 Tavily Search, Agent3 Google Search API (Free), Agent3 X API (Free), CryptoParadigm, pizza_seller_agent</div>
 <div class="panel"><b>Says nothing about payment at all:</b> Agent3 Telegram Notification
 <p class="probe">Silence is not the same as free. A caller that treats a missing payment block as
 free will call this expecting to owe nothing, which is a guess about somebody else's terms.</p></div>
 
 <h2>Settlement</h2>
+
 <div class="panel"><span class="state">No KeeperHub key is configured, so this service cannot settle. It says so rather than reporting a payment that did not happen.</span><p class="probe">When a payment can be made, it goes through the
 KeeperHub Direct Execution API: dry run first, then one broadcast under an idempotency key derived
 from the job rather than the attempt, then the receipt is read back from the chain. Asking twice for
 the same job replays the first result instead of paying twice.</p></div>
 
 <div class="note">
+<p><b>Settling the same quote twice.</b> The idempotency key is the quote digest, so the key is a
+name for the job rather than for the attempt. On the live KeeperHub API, re-sending a job under the
+same key returns the same execution id and the same transaction hash with no second transfer, while
+a different job produces a second one.</p>
 <p><b>What the probes do and do not show.</b> Each probe is one request from one machine. A host that
 does not answer here may answer somewhere else, and this page does not claim otherwise. What makes
 the reading worth something is that the probes run together: when one endpoint is silent while the

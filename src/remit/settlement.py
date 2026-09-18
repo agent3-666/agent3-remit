@@ -8,6 +8,8 @@ the name of the missing field, not a default.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import socket
 import ssl
 import urllib.error
@@ -47,12 +49,43 @@ class Plan:
     payee: str | None = None
     payee_source: str | None = None
     chain_id: int | None = None
+    operation: str | None = None
+    snapshot: dict | None = None
     findings: list[Finding] = field(default_factory=list)
     probes: list[Probe] = field(default_factory=list)
 
     @property
     def payable(self) -> bool:
         return not self.findings and self.amount is not None and self.payee is not None
+
+    @property
+    def quote(self) -> dict:
+        """What this payment is for, in the four terms that make it traceable.
+
+        A transfer on its own is just a transfer; anybody can send testnet coins to an address and
+        call it an integration. What makes this one answerable is that it names the listing, the
+        operation, the price exactly as published, and the directory snapshot that price was read
+        from. Take any of the four away and the receipt stops being evidence about a listing.
+        """
+        return {
+            "resource_id": self.resource_id,
+            "record": self.record_name,
+            "operation": self.operation,
+            "published_amount": self.amount,
+            "published_currency": self.currency,
+            "directory_snapshot": (self.snapshot or {}).get("digest"),
+            "directory_read_at": (self.snapshot or {}).get("read_at"),
+        }
+
+    @property
+    def quote_digest(self) -> str:
+        """A stable name for this quote. The idempotency key is derived from it.
+
+        Because the published price is part of it, a re-quote at a different price is a different
+        job, and paying the new price cannot silently replay the old payment.
+        """
+        material = json.dumps(self.quote, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(material.encode()).hexdigest()
 
     def as_dict(self) -> dict:
         return {
@@ -64,6 +97,9 @@ class Plan:
             "payee": self.payee,
             "payee_source": self.payee_source,
             "chain_id": self.chain_id,
+            "operation": self.operation,
+            "quote": self.quote,
+            "quote_digest": self.quote_digest,
             "blocked_by": [{"field": f.field_name, "why": f.detail, "kind": f.blocker} for f in self.findings],
             "probes": [{"url": p.url, "reachable": p.reachable, "status": p.status, "note": p.note} for p in self.probes],
         }
@@ -106,8 +142,21 @@ def _describe(status: int, body: str) -> str:
     return f"{status}: {text}" if text else str(status)
 
 
-def build_plan(record: Record, chain_id: int, payee_override: str | None = None, check_liveness: bool = True) -> Plan:
-    plan = Plan(record_name=record.name, resource_id=record.resource_id, chain_id=chain_id)
+def build_plan(
+    record: Record,
+    chain_id: int,
+    payee_override: str | None = None,
+    check_liveness: bool = True,
+    operation: str | None = None,
+    snapshot: dict | None = None,
+) -> Plan:
+    plan = Plan(
+        record_name=record.name,
+        resource_id=record.resource_id,
+        chain_id=chain_id,
+        operation=operation or (record.operations[0].name if record.operations else None),
+        snapshot=snapshot,
+    )
     payment = record.payment
 
     if payment.raw is None:

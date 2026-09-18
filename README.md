@@ -12,6 +12,7 @@ For the ones that cannot, it says which field is missing instead of filling in s
 python run.py                    # read the live directory and price every record
 python run.py --json
 python run.py --pay "<record>" --payee 0x...   # settle through KeeperHub
+python run.py --call "<record>" --query keeperhub   # call it with only what the directory publishes
 ```
 
 Nothing to install: it runs on a stock Python 3.9+ with only the standard library.
@@ -37,15 +38,40 @@ What reading it live turns up:
 **The result: the directory can quote a price and cannot take the money.** That is the gap KeeperHub
 fills, and it is a named, reproducible failure rather than a general claim about agent commerce.
 
+### Calling the same listing
+
+`--call` uses only the addresses the directory publishes. Three observations, in order, for the one
+priced record:
+
+1. The directory publishes `https://agent3-x-api.vercel.app/api/v1/google/paid`.
+2. That address returns **404 `Unknown endpoint`**, and names the endpoints it does serve:
+   `search`, `news`, `images`, `places`.
+3. Calling the first of those returns **200** with seven results.
+
+So the service runs. The run is recorded as **corrected by the service itself, not published by the
+directory**, because the address that worked did not come from the listing. The free Google record
+goes no further: its published address answers with an HTML 404 and offers no correction.
+
+### Every quote is pinned to a snapshot, and anyone can recompute it
+
+A price is published at a moment, so the plan records the `sha256` of the exact bytes the directory
+served, the byte count, and the time of the read. At the time of writing that is
+`ede78348d812414a8014f007ae3ce4ad9bcb7186f563fe94c5d51951809e48b2` over 127,185 bytes. Recompute it
+with `curl -s https://a2a-hub-chi.vercel.app/api/resources | shasum -a 256`. The digest names that one
+reading, so a different digest later is the mechanism doing its job: the listing has changed, which
+makes it a different quote, and the price agreed against the old one does not carry over.
+
 ## What it does with KeeperHub
 
 `src/remit/keeperhub.py` is a Direct Execution client written against
 [the published API](https://docs.keeperhub.com/api/direct-execution). The order is fixed:
 
 1. **Dry run** (`simulate: true`, a boolean). It creates no execution record.
-2. **Broadcast once**, under an `Idempotency-Key` derived from the job — chain, recipient, amount,
-   token — and never from the attempt. A retry after a timeout is therefore the same request, and
-   KeeperHub replays the original result rather than paying twice.
+2. **Broadcast once**, under an `Idempotency-Key` derived from the job and never from the attempt.
+   The job is the quote: resource id, operation, the price exactly as published, and the directory
+   snapshot it was read from. A retry after a timeout is therefore the same request, and KeeperHub
+   replays the original result rather than paying twice. A re-quote at a different price is a
+   different job, so the new price cannot silently replay the old payment.
 3. **Read the receipt back** by polling `/api/execute/{id}/status` until it is terminal, honouring the
    `X-Poll-Interval-Hint` header.
 
@@ -58,7 +84,7 @@ nothing. It never reports a payment that did not happen.
 ## Tests, and why they mean something
 
 ```bash
-python -m pytest tests -q          # 16 tests
+python -m pytest tests -q          # 24 tests
 python scripts/mutation_check.py   # delete each rule, its test must fail
 ```
 
@@ -66,6 +92,11 @@ The KeeperHub client is tested against a **stub server that records what it was 
 by reading our own source. Those tests assert the dry run comes first, that only the broadcast carries
 an idempotency key, that the receipt is polled rather than assumed, that asking twice for the same job
 produces one execution, and that with no key configured **zero requests leave the process**.
+
+Calling a listing is tested the same way: a stub service reproduces the three shapes that matter, an
+address that works, an address that fails while naming the endpoints it does have, and an address
+that fails silently. The test asserts that a call which only succeeded after a correction is not
+credited to the directory.
 
 `scripts/mutation_check.py` deletes each rule's condition one at a time and requires the test covering
 it to fail. It refuses two results that look like success: a test filter that matched nothing, and a
@@ -88,6 +119,7 @@ run.py                      read, price, settle
 src/remit/directory.py      reads the live Hub directory, both payment key names, with a cache
 src/remit/settlement.py     builds a payment plan, or names the missing fields
 src/remit/keeperhub.py      Direct Execution client: dry run, one broadcast, receipt
+src/remit/fulfil.py         calls a listing using only the addresses the directory publishes
 scripts/build_site.py       renders the page from the same pipeline
 scripts/mutation_check.py   removes each rule and requires its test to fail
 ```

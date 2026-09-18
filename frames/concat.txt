@@ -1,0 +1,17 @@
+file '000.png'
+duration 10.000
+file '001.png'
+duration 15.000
+file '002.png'
+duration 15.000
+file '003.png'
+duration 14.000
+file '004.png'
+duration 15.000
+file '005.png'
+duration 11.000
+file '006.png'
+duration 10.900
+file '006.png'
+duration 0.100
+file '006.png'

@@ -17,7 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from remit.directory import HUB_BASE, fetch_records, key_name_summary  # noqa: E402
+from remit.directory import HUB_BASE, fetch_records, key_name_summary, snapshot_of  # noqa: E402
+from remit.fulfil import fulfil  # noqa: E402
 from remit.keeperhub import KeeperHub  # noqa: E402
 from remit.settlement import build_plan  # noqa: E402
 
@@ -26,10 +27,13 @@ CHAIN_ID = int(os.environ.get("KEEPERHUB_CHAIN_ID", "11155111"))
 
 def report(base: str, chain_id: int, check_liveness: bool = True) -> dict:
     records = fetch_records(base)
+    snapshot = snapshot_of(base)
+    snapshot_dict = snapshot.as_dict() if snapshot else None
     summary = key_name_summary(records)
-    plans = [build_plan(r, chain_id, check_liveness=check_liveness) for r in records]
+    plans = [build_plan(r, chain_id, check_liveness=check_liveness, snapshot=snapshot_dict) for r in records]
     return {
         "directory": base,
+        "snapshot": snapshot_dict,
         "chain_id": chain_id,
         "records": len(records),
         "key_names": summary,
@@ -89,11 +93,16 @@ def main() -> int:
     parser.add_argument("--pay", metavar="RESOURCE_ID", help="settle this record through KeeperHub")
     parser.add_argument("--payee", help="the address to pay, when the directory does not publish one")
     parser.add_argument("--amount", help="override the amount, in whole units")
-    parser.add_argument("--task-id", default="remit-demo", help="names the job; the idempotency key is derived from it")
+    parser.add_argument("--operation", help="which published operation is being paid for")
+    parser.add_argument("--call", metavar="RESOURCE_ID", help="call this record using only what the directory publishes")
+    parser.add_argument("--query", default="keeperhub", help="the search term to send when calling")
     args = parser.parse_args()
 
     if args.pay:
         return settle(args)
+
+    if args.call:
+        return call_it(args)
 
     data = report(args.directory, args.chain_id, check_liveness=not args.no_probe)
     if args.json:
@@ -103,6 +112,32 @@ def main() -> int:
     return 0
 
 
+def call_it(args) -> int:
+    """The other half: can a stranger actually use this listing, from what it publishes?"""
+    records = fetch_records(args.directory)
+    record = next((r for r in records if r.resource_id == args.call or r.name == args.call), None)
+    if record is None:
+        print(f"no record in the directory with id or name {args.call!r}")
+        return 2
+
+    result = fulfil(record, query=args.query, operation=args.operation)
+    print(f"Calling: {record.name}")
+    for step in result.steps:
+        print(f"  {step.what}")
+        print(f"    {step.url}")
+        print(f"    {step.status}: {step.detail}")
+    for missing in result.missing:
+        print(f"  MISSING {missing}")
+    print("")
+    if result.delivered:
+        print(f"Delivered. The address that worked was {result.url_source}.")
+        print(f"  {result.called_url}")
+        print(f"  {result.result_preview}")
+    else:
+        print("Not delivered. What the directory publishes was not enough to call this listing.")
+    return 0 if result.delivered else 1
+
+
 def settle(args) -> int:
     records = fetch_records(args.directory)
     record = next((r for r in records if r.resource_id == args.pay or r.name == args.pay), None)
@@ -110,7 +145,14 @@ def settle(args) -> int:
         print(f"no record in the directory with id or name {args.pay!r}")
         return 2
 
-    plan = build_plan(record, args.chain_id, payee_override=args.payee)
+    snapshot = snapshot_of(args.directory)
+    plan = build_plan(
+        record,
+        args.chain_id,
+        payee_override=args.payee,
+        operation=args.operation,
+        snapshot=snapshot.as_dict() if snapshot else None,
+    )
     print(f"Settling: {record.name}")
     for probe in plan.probes:
         print(f"  probe {probe.url}: {'answers' if probe.reachable else 'no answer'} — {probe.note}")
@@ -130,7 +172,13 @@ def settle(args) -> int:
         return 1
 
     print(f"\n  paying {amount} to {plan.payee} on chain {args.chain_id} through KeeperHub")
-    result = client.transfer(recipient=plan.payee, amount=amount, task_id=args.task_id)
+    # The job is the quote: this listing, this operation, this published price, this snapshot.
+    # Paying is therefore traceable to a named listing rather than being a bare transfer.
+    print("  this payment is for:")
+    for key, value in plan.quote.items():
+        print(f"    {key}: {value}")
+    print(f"    quote digest: {plan.quote_digest}")
+    result = client.transfer(recipient=plan.payee, amount=amount, task_id=plan.quote_digest)
     for attempt in result.attempts:
         print(f"  {attempt.step:<10} http {attempt.status_code} {'ok' if attempt.ok else 'refused'} {attempt.note}")
     print("")

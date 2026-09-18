@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from remit.keeperhub import KeeperHub, idempotency_key  # noqa: E402
 
 RECEIPT_TX = "0x" + "ab" * 32
+SENDER = "0x" + "5e" * 20  # the organisation wallet KeeperHub broadcasts from
 
 
 class StubKeeperHub(BaseHTTPRequestHandler):
@@ -58,7 +59,11 @@ class StubKeeperHub(BaseHTTPRequestHandler):
             }
         )
         if simulate is True:
-            return self._reply(200, {"simulated": True, "gasEstimate": "21000"})
+            # The dry run names the account that would broadcast, which is not the payee.
+            return self._reply(
+                200,
+                {"simulated": True, "gasEstimate": "21000", "from": SENDER, "to": body.get("recipientAddress")},
+            )
         if simulate is not None:
             # A string "true" is not a boolean; the docs are explicit, so the stub is too.
             return self._reply(400, {"error": "simulate must be a boolean"})
@@ -168,3 +173,24 @@ def test_a_refused_dry_run_stops_before_broadcasting(stub):
     posts = [c for c in StubKeeperHub.calls if c["path"] == "/api/execute/transfer"]
     assert len(posts) == 1, "nothing was broadcast after the dry run was refused"
     assert KeeperHub.transfer is original
+
+
+def test_the_sending_account_is_asked_for_without_broadcasting(stub):
+    """Counting transactions only means something if the counted account is the one that sends.
+
+    Reading it from the dry run keeps that free: no signature, no broadcast, no execution record.
+    """
+    client = KeeperHub(api_key="kh_test", base_url=stub, chain_id=11155111)
+    sender = client.broadcaster(recipient="0x" + "11" * 20, amount="0.00001")
+
+    assert sender == SENDER
+    assert [c["simulate"] for c in StubKeeperHub.calls] == [True], "a dry run, and nothing else"
+    assert all(c["idempotency_key"] is None for c in StubKeeperHub.calls)
+
+
+def test_the_sender_is_not_the_payee(stub):
+    """The failure this exists to prevent: counting the payee shows no movement for every attempt,
+    which reads exactly like a proven replay while proving nothing."""
+    client = KeeperHub(api_key="kh_test", base_url=stub, chain_id=11155111)
+    payee = "0x" + "11" * 20
+    assert client.broadcaster(recipient=payee, amount="0.00001") != payee

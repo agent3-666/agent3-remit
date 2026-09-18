@@ -21,7 +21,8 @@ sys.path.insert(0, str(ROOT))
 
 from run import report  # noqa: E402
 
-from remit.directory import HUB_BASE  # noqa: E402
+from remit.directory import HUB_BASE, fetch_records  # noqa: E402
+from remit.fulfil import fulfil  # noqa: E402
 from remit.keeperhub import KeeperHub  # noqa: E402
 
 CSS = """
@@ -56,6 +57,10 @@ def build(out: Path) -> Path:
     data = report(os.environ.get("HUB_DIRECTORY_URL", HUB_BASE), int(os.environ.get("KEEPERHUB_CHAIN_ID", "11155111")))
     keys = data["key_names"]
     client = KeeperHub()
+
+    # The other half of the story: can a stranger call this listing at all, using only what the
+    # directory publishes? Run it against the first priced record, live, at build time.
+    call = _call_the_priced_listing(data)
 
     priced_panels = []
     free_names = []
@@ -112,7 +117,19 @@ not enough to pay anyone, name the field that is missing, and never guess it.</p
 It read <a href="{data['directory']}/api/resources">{html.escape(data['directory'])}</a>, the live
 Agent3 Hub directory, over its public API. <b>{data['records']} records.</b> Read-only: this service
 sits alongside the Hub and never writes to it. Read at {generated}.
+<p class="probe"><b>The snapshot every quote on this page is pinned to.</b>
+<code>sha256</code> of the exact bytes that endpoint served:
+<code>{html.escape((data['snapshot'] or {}).get('digest', '-'))}</code>,
+over {(data['snapshot'] or {}).get('bytes', 0)} bytes, read at
+{html.escape((data['snapshot'] or {}).get('read_at', '-'))}. Anybody can recompute it:
+<code>curl -s {html.escape(data['directory'])}/api/resources | shasum -a 256</code>. The digest
+names <b>that one reading</b>. Getting a different one later is the mechanism working: the listing
+has changed, so it is a different quote, and a payment agreed against the old one does not carry
+over to it.</p>
 </div>
+
+<h2>Calling the listing</h2>
+{call}
 
 <h2>How this directory writes payment terms</h2>
 <div class="panel">
@@ -137,12 +154,17 @@ unreadable. Both keys are read here, and neither is chosen as the winner.</p>
 free will call this expecting to owe nothing, which is a guess about somebody else's terms.</p></div>
 
 <h2>Settlement</h2>
+{_receipt_panel(ROOT / "media" / "receipt.json")}
 <div class="panel">{settle_state}<p class="probe">When a payment can be made, it goes through the
 KeeperHub Direct Execution API: dry run first, then one broadcast under an idempotency key derived
 from the job rather than the attempt, then the receipt is read back from the chain. Asking twice for
 the same job replays the first result instead of paying twice.</p></div>
 
 <div class="note">
+<p><b>Settling the same quote twice.</b> The idempotency key is the quote digest, so the key is a
+name for the job rather than for the attempt. On the live KeeperHub API, re-sending a job under the
+same key returns the same execution id and the same transaction hash with no second transfer, while
+a different job produces a second one.</p>
 <p><b>What the probes do and do not show.</b> Each probe is one request from one machine. A host that
 does not answer here may answer somewhere else, and this page does not claim otherwise. What makes
 the reading worth something is that the probes run together: when one endpoint is silent while the
@@ -157,6 +179,76 @@ money is gone.</p>
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page)
     return out
+
+
+def _receipt_panel(path: Path) -> str:
+    """A settlement that happened, with the second attempt counted from outside.
+
+    Every number here belongs to one recorded run and is labelled with when it was taken. Nothing on
+    this page states how many transactions the wallet has sent in total, because that keeps moving:
+    anyone settling again adds to it, and a figure written here would quietly go stale.
+    """
+    if not path.exists():
+        return ""
+    data = json.loads(path.read_text())
+    rows = "".join(
+        f'<tr><td>{html.escape(a["label"])}</td>'
+        f'<td class="field">{html.escape(a["tx_hash"] or "-")}</td>'
+        f'<td>{a["wallet_tx_count_before"]} &rarr; {a["wallet_tx_count_after"]}</td>'
+        f'<td>{"nothing new reached the chain" if a["moved"] == 0 else "one transaction"}</td></tr>'
+        for a in data["attempts"]
+    )
+    first = data["attempts"][0]
+    link = data["explorer"] + (first["tx_hash"] or "")
+    return (
+        '<div class="panel payable"><b>A settlement, and the same job asked for twice.</b>'
+        f'<table><tr><th>attempt</th><th>transaction</th><th>sent by this wallet</th><th></th></tr>{rows}</table>'
+        f'<p class="probe">The count either side of each attempt is of transactions sent by '
+        f'{html.escape(data["wallet_counted"])}, read from '
+        f'<code>{html.escape(data["counted_from"])}</code> rather than from KeeperHub. '
+        '"I did not send a second one" is the one statement that should not come from whoever would '
+        'have sent it. These readings are from the run recorded at '
+        f'{html.escape(data["recorded_at"])}; the wallet keeps sending after that, so the numbers '
+        'belong to that run rather than describing the wallet today.</p>'
+        f'<p class="probe">Transaction: <a href="{html.escape(link)}">{html.escape(link)}</a></p></div>'
+    )
+
+
+def _call_the_priced_listing(data: dict) -> str:
+    """State what was observed, in order, and leave the conclusion to the reader."""
+    priced = [
+        p for p in data["plans"]
+        if not any(b["kind"] == "not-priced" or b["field"] == "payment" for b in p["blocked_by"])
+    ]
+    if not priced:
+        return ""
+    target = priced[0]["record"]
+    record = next((r for r in fetch_records(data["directory"]) if r.name == target), None)
+    if record is None:
+        return ""
+    result = fulfil(record)
+
+    steps = "".join(
+        f'<tr><td>{html.escape(s.what)}</td><td class="field">{html.escape(s.url)}</td>'
+        f'<td>{s.status}: {html.escape(s.detail)}</td></tr>'
+        for s in result.steps
+    )
+    if result.delivered:
+        verdict = (
+            f'<p class="probe">The address that answered was <b>{html.escape(result.url_source or "")}</b>. '
+            "So the service itself runs, and the half that does not work is the half that takes money.</p>"
+        )
+    else:
+        verdict = (
+            '<p class="probe">What the directory publishes was not enough to call this listing, and '
+            "no other address was offered.</p>"
+        )
+    missing = "".join(f'<p class="probe blocker">MISSING {html.escape(m)}</p>' for m in result.missing)
+    return (
+        f'<div class="panel"><div class="name">{html.escape(record.name)}</div>'
+        f'<table><tr><th>what was done</th><th>address</th><th>what came back</th></tr>{steps}</table>'
+        f"{verdict}{missing}</div>"
+    )
 
 
 def main() -> int:

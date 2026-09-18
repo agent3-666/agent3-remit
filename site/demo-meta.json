@@ -1,0 +1,33 @@
+{
+  "terminal_lines": 22,
+  "beats": [
+    [
+      "listing",
+      10
+    ],
+    [
+      "call",
+      15
+    ],
+    [
+      "blocked",
+      15
+    ],
+    [
+      "terminal",
+      14
+    ],
+    [
+      "quote",
+      15
+    ],
+    [
+      "snapshot",
+      11
+    ],
+    [
+      "keys",
+      11
+    ]
+  ]
+}

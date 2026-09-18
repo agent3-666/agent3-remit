@@ -48,8 +48,16 @@ def wei_to_eth(value: int) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--to", required=True, help="the KeeperHub organisation wallet")
-    parser.add_argument("--amount", default="0.01", help="ETH to send, in whole units")
+    parser.add_argument("--amount", help="ETH to send, in whole units; the default is the sized estimate below")
     parser.add_argument("--settlements-per-day", type=int, default=20, help="how often the demo is expected to settle")
+    parser.add_argument(
+        "--gas-headroom",
+        type=float,
+        default=4.0,
+        help="multiple of the current gas price to size the top-up at. Sizing at today's price is how "
+        "a demo runs dry halfway through judging, because gas moves and this wallet cannot be topped "
+        "up by anyone but us",
+    )
     parser.add_argument("--send", action="store_true", help="actually broadcast; without this nothing is sent")
     args = parser.parse_args()
 
@@ -59,7 +67,10 @@ def main() -> int:
     org_balance = int(str(rpc("eth_getBalance", [args.to, "latest"])), 16)
 
     one_settlement = gas_price * TRANSFER_GAS
-    needed = one_settlement * args.settlements_per_day * JUDGING_DAYS
+    settlements = args.settlements_per_day * JUDGING_DAYS
+    at_todays_price = one_settlement * settlements
+    needed = int(at_todays_price * args.gas_headroom)
+    amount = args.amount if args.amount is not None else f"{wei_to_eth(needed) * 1.05:.4f}"
 
     print(f"chain            {CHAIN_ID} (Ethereum Sepolia)")
     print(f"from             {funder}  holds {wei_to_eth(balance):.4f} ETH")
@@ -67,14 +78,15 @@ def main() -> int:
     print(f"gas price now    {gas_price / 1e9:.3f} gwei")
     print(f"one settlement   {wei_to_eth(one_settlement):.8f} ETH  ({TRANSFER_GAS} gas)")
     print(
-        f"judging window   {args.settlements_per_day}/day for {JUDGING_DAYS} days "
-        f"= {wei_to_eth(needed):.6f} ETH"
+        f"judging window   {args.settlements_per_day}/day for {JUDGING_DAYS} days = {settlements} settlements"
     )
-    print(f"proposed send    {args.amount} ETH")
+    print(f"  at today's gas {wei_to_eth(at_todays_price):.6f} ETH")
+    print(f"  sized at {args.gas_headroom:g}x  {wei_to_eth(needed):.6f} ETH  (gas moves, and this wallet is ours to refill)")
+    print(f"proposed send    {amount} ETH")
 
-    if float(args.amount) < wei_to_eth(needed):
-        print("\nNote: the proposed amount is below the estimated need for the judging window.")
-    if float(args.amount) > wei_to_eth(balance) / 2:
+    if float(amount) < wei_to_eth(needed):
+        print("\nNote: the proposed amount is below the sized estimate for the judging window.")
+    if float(amount) > wei_to_eth(balance) / 2:
         print("\nNote: this would send more than half of what the funding wallet holds.")
         print("The receiving key lives in KeeperHub's isolated environment, so this cannot be pulled back.")
 
@@ -99,7 +111,7 @@ def main() -> int:
         print(f"\nThe key in .env belongs to {account.address}, not {funder}. Nothing was sent.")
         return 2
 
-    value = int(float(args.amount) * 1e18)
+    value = int(float(amount) * 1e18)
     nonce = int(str(rpc("eth_getTransactionCount", [funder, "pending"])), 16)
     tx = {
         "to": args.to,
@@ -112,7 +124,7 @@ def main() -> int:
     }
     signed = account.sign_transaction(tx)
     tx_hash = str(rpc("eth_sendRawTransaction", ["0x" + signed.raw_transaction.hex().lstrip("0x")]))
-    print(f"\nsent {args.amount} ETH to {args.to}")
+    print(f"\nsent {amount} ETH to {args.to}")
     print(f"transaction: {tx_hash}")
     print(f"explorer:    https://sepolia.etherscan.io/tx/{tx_hash}")
     return 0

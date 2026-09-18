@@ -124,6 +124,38 @@ class KeeperHub:
         except Exception as err:  # network-level
             return Attempt(path, None, False, {"error": str(err)}, "no response from KeeperHub")
 
+    def broadcaster(self, recipient: str, amount: str, token_address: str | None = None) -> str | None:
+        """Ask which account would broadcast, without broadcasting anything.
+
+        The dry run neither signs nor sends, so this costs nothing. It matters because any check that
+        counts transactions has to count the *sending* account: counting the payee reports no movement
+        for every attempt, which reads exactly like a proven replay while proving nothing.
+
+        ASSUMPTION(observed with a control, not documented): the sender is read from the first of
+        these keys the dry run returns. What was observed, on the live API and not by this code: the
+        same request sent twice with different recipientAddress values moved `to` (the organisation
+        wallet, then a burn address) and left `from` unchanged. So `from` tracks the sender rather
+        than the payee. It is not confirmed by the documentation, whose site renders client-side and
+        curls down to an empty shell. If this returns nothing, this is where to look.
+        """
+        if not self.can_settle:
+            return None
+        body: dict[str, Any] = {"chainId": self.chain_id, "recipientAddress": recipient, "amount": amount}
+        if token_address:
+            body["tokenAddress"] = token_address
+        dry = self._call("POST", "/api/execute/transfer", {**body, "simulate": True})
+        if not dry.ok:
+            return None
+        found = _first(dry.body, ["from", "fromAddress", "sender", "walletAddress"])
+        if not found and isinstance(dry.body, dict):
+            for nested in ("transaction", "simulation", "data", "result"):
+                inner = dry.body.get(nested)
+                if isinstance(inner, dict):
+                    found = _first(inner, ["from", "fromAddress", "sender", "walletAddress"])
+                    if found:
+                        break
+        return str(found) if found else None
+
     def transfer(
         self,
         recipient: str,

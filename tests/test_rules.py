@@ -97,6 +97,58 @@ def test_an_interface_with_no_host_is_reported_as_uncallable():
     assert plan.payable is False
 
 
+def test_a_payment_is_bound_to_the_listing_it_came_from():
+    """A bare transfer proves nothing. This one names what it is for."""
+    snapshot = {"digest": "d" * 64, "read_at": "2026-09-17T19:00:00+00:00"}
+    plan = build_plan(
+        record("priced", {"mode": "usage-based", "amount": 0.01, "currency": "USD"}),
+        CHAIN,
+        payee_override="0x" + "11" * 20,
+        check_liveness=False,
+        operation="Google Web Search",
+        snapshot=snapshot,
+    )
+
+    assert plan.quote["resource_id"] == "id-priced"
+    assert plan.quote["operation"] == "Google Web Search"
+    assert plan.quote["published_amount"] == 0.01
+    assert plan.quote["directory_snapshot"] == "d" * 64
+    assert len(plan.quote_digest) == 64
+
+
+def test_a_different_published_price_is_a_different_job():
+    """Otherwise a re-quote could replay the old payment under the same idempotency key."""
+    snapshot = {"digest": "d" * 64, "read_at": "2026-09-17T19:00:00+00:00"}
+
+    def digest_for(amount: float) -> str:
+        return build_plan(
+            record("priced", {"mode": "usage-based", "amount": amount, "currency": "USD"}),
+            CHAIN,
+            payee_override="0x" + "11" * 20,
+            check_liveness=False,
+            operation="op",
+            snapshot=snapshot,
+        ).quote_digest
+
+    assert digest_for(0.01) != digest_for(0.02)
+
+
+def test_a_changed_directory_snapshot_is_a_different_job():
+    """The price was published at a moment. A later listing is not the same quote."""
+
+    def digest_for(digest: str) -> str:
+        return build_plan(
+            record("priced", {"mode": "usage-based", "amount": 0.01, "currency": "USD"}),
+            CHAIN,
+            payee_override="0x" + "11" * 20,
+            check_liveness=False,
+            operation="op",
+            snapshot={"digest": digest, "read_at": "2026-09-17T19:00:00+00:00"},
+        ).quote_digest
+
+    assert digest_for("a" * 64) != digest_for("b" * 64)
+
+
 def test_an_endpoint_that_does_not_answer_is_reported_as_such():
     # Port 1 on localhost refuses immediately, which is the "no answer" case without a network call.
     plan = build_plan(

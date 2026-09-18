@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Agent3 Remit</title><style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin:0; background:#0a0a0a; color:#f2f2f2; width:1280px; height:720px; overflow:hidden;
+  font:15px/1.55 ui-sans-serif,-apple-system,"Segoe UI",system-ui,sans-serif; }
+.stage { position:relative; width:1280px; height:720px; }
+section { position:absolute; inset:0; padding:46px 60px; opacity:0; transition:opacity .4s ease; }
+section.on { opacity:1; }
+h1 { font-size:33px; margin:0 0 4px; letter-spacing:-.5px; }
+h1 small { display:block; font-size:16px; color:#9a9a9a; font-weight:400; letter-spacing:0; margin-top:7px; }
+.panel { border:1px solid #262626; border-radius:12px; background:#0e0e0e; padding:20px 24px; margin-top:20px; }
+.panel.bad { border-color:#4a2a22; }
+.panel.good { border-color:#3c4a1f; }
+.name { font-size:22px; font-weight:600; }
+.asks { color:#d4e85a; font-size:19px; margin-left:14px; }
+table { width:100%; border-collapse:collapse; font-size:14px; margin-top:10px; }
+th { text-align:left; color:#9a9a9a; font-weight:500; padding:8px 10px; border-bottom:1px solid #262626; }
+td { padding:9px 10px; border-bottom:1px solid #1b1b1b; color:#cfcfcf; vertical-align:top; }
+td.mono, .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; color:#e8e8e8;
+  word-break:break-all; }
+.ok { color:#c7e05a; } .no { color:#ff8b6b; }
+.note { color:#9a9a9a; font-size:15px; margin-top:18px; }
+.note b { color:#e8e8e8; font-weight:600; }
+pre.term { background:#000; border:1px solid #262626; border-radius:10px; padding:18px 20px; margin-top:18px;
+  height:556px; overflow:hidden; white-space:pre-wrap; word-break:break-word;
+  font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; color:#cfcfcf; }
+.digest { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:15px; color:#d4e85a;
+  word-break:break-all; line-height:1.7; }
+.cmd { background:#000; border:1px solid #262626; border-radius:8px; padding:12px 16px; margin-top:14px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14px; color:#cfcfcf; }
+</style></head>
+<body><div class="stage"><section id="listing">
+    <h1>A directory lists a service, and publishes a price
+      <small>https://a2a-hub-chi.vercel.app — 9 records, read live</small></h1>
+    <div class="panel">
+      <div><span class="name">Agent3 Google Search API (Paid)</span>
+        <span class="asks">asks 0.01 USD</span></div>
+      <table>
+        <tr><th>published operation</th><td>Google Web Search</td></tr>
+        <tr><th>published address</th><td class="mono">https://agent3-x-api.vercel.app/api/v1/google/paid</td></tr>
+        <tr><th>published payee</th><td class="no">none. the record does not carry an address to pay</td></tr>
+      </table>
+    </div>
+    <p class="note">Two separate questions follow from a listing like this. <b>Can it be used?</b>
+    And <b>can it be paid?</b> They do not have the same answer.</p></section><section id="call">
+    <h1>Call it with only what the directory publishes
+      <small>python run.py --call "Agent3 Google Search API (Paid)"</small></h1>
+    <div class="panel">
+      <table><tr><th>what was done</th><th>address</th><th>what came back</th></tr><tr><td>call the published interface URL</td><td class="mono">https://agent3-x-api.vercel.app/api/v1/google/paid</td><td class="no">404: error: Unknown endpoint</td></tr><tr><td>the service named its own endpoints, so try the first one it offered</td><td class="mono">https://agent3-x-api.vercel.app/api/v1/google/search?q=keeperhub</td><td class="ok">200: offered [&#x27;search&#x27;, &#x27;news&#x27;, &#x27;images&#x27;, &#x27;places&#x27;]; 7 results, first: KeeperHub — Execution Layer for Onchain Agents — https://keeperhub.com/</td></tr></table>
+    </div>
+    <p class="note">The address that answered was <b>corrected by the service itself, not published by the directory</b>. The service behind the listing runs.</p></section><section id="blocked">
+    <h1>Now try to pay it
+      <small>The same record, and the same rule: never fill in a field the record does not publish</small></h1>
+    <div class="panel bad">
+      <table><tr><th>published endpoint</th><th></th><th>what came back</th></tr><tr><td class="mono">https://hub.agent3.space/api/proxy/invoke</td><td class="no">no answer</td><td>no response ([SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032))</td></tr><tr><td class="mono">https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config</td><td class="ok">answers</td><td>402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge</td></tr></table>
+      <table><tr><th>field</th><th>why this stops the payment</th></tr><tr><td class="mono">payment.gateway</td><td class="no">https://hub.agent3.space/api/proxy/invoke did not answer, so it cannot tell us who to pay</td></tr><tr><td class="mono">payment.configUrl</td><td class="no">https://agent3-x-api-kqdw.vercel.app/api/v1/google/x402/config answers 402 from a disabled deployment (DEPLOYMENT_DISABLED), which is not an x402 challenge, so it cannot tell us who to pay</td></tr><tr><td class="mono">payee address</td><td class="no">no address to pay: the record publishes none, and the endpoints that could supply one did not</td></tr></table>
+    </div>
+    <p class="note">A 402 is what a payment challenge looks like. <b>This one carries
+    DEPLOYMENT_DISABLED</b>, so a caller switching on the status code alone would try to pay a
+    deployment that is switched off.</p></section><section id="terminal">
+    <h1>The whole directory, priced the same way
+      <small>python run.py</small></h1>
+    <pre class="term" id="term">Agent3 Remit
+==========================================================================
+Directory: https://a2a-hub-chi.vercel.app   records: 9   chain: 11155111
+
+How this directory writes payment terms
+  under payment.mode only : 5
+  under payment.model only: 3
+  under both keys         : 0
+  under neither key       : 1
+  a caller reading only payment.mode is blind to 4 record(s): Telegram Content Search, Agent3 Web Reader, Agent3 Tavily Search, Agent3 Telegram Notification
+  (an absent key and a free service look identical, which is why both are read)
+
+Priced records that can be paid right now: 0 of 2
+
+Agent3 Telegram Notification
+  BLOCKED payment: the record publishes no payment block at all, so there is nothing to price
+
+Agent3 Google Search API (Paid)
+  asks 0.01 USD
+  BLOCKED payee address: no address to pay: the record publishes none, and the endpoints that could supply one did not
+
+</pre></section><section id="quote">
+    <h1>What the payment would be for
+      <small>A transfer on its own is a transfer. This one names the job it belongs to.</small></h1>
+    <div class="panel">
+      <table><tr><th>resource_id</th><td class="mono">agent3-google-search-api-paid--1767630350903</td></tr><tr><th>record</th><td class="mono">Agent3 Google Search API (Paid)</td></tr><tr><th>operation</th><td class="mono">Google Web Search</td></tr><tr><th>published_amount</th><td class="mono">0.01</td></tr><tr><th>published_currency</th><td class="mono">USD</td></tr><tr><th>directory_snapshot</th><td class="mono">ede78348d812414a8014f007ae3ce4ad9bcb7186f563fe94c5d51951809e48b2</td></tr><tr><th>directory_read_at</th><td class="mono">2026-09-17T19:40:17+00:00</td></tr></table>
+    </div>
+    <p class="note">The idempotency key is a digest of exactly these terms, so <b>the key names the
+    job and not the attempt</b>. A retry after a timeout is the same request. A re-quote at a
+    different price is a different job, and cannot replay the old payment.</p>
+    <p class="digest">5924177eb23a54250ee8b6fb4c2cd886cdbca8cefb9ca920033ffac30b14923b</p></section><section id="snapshot">
+    <h1>The price was published at a moment
+      <small>So the quote pins the bytes it was read from</small></h1>
+    <div class="panel good">
+      <table>
+        <tr><th>sha256 of the bytes the directory served</th><td class="mono">ede78348d812414a8014f007ae3ce4ad9bcb7186f563fe94c5d51951809e48b2</td></tr>
+        <tr><th>bytes</th><td>127185</td></tr>
+        <tr><th>read at</th><td>2026-09-17T19:40:17+00:00</td></tr>
+      </table>
+      <div class="cmd">curl -s https://a2a-hub-chi.vercel.app/api/resources | shasum -a 256</div>
+    </div>
+    <p class="note">Anyone can run that line. <b>A different digest means the listing moved</b>, which
+    makes it a different quote rather than the same one at a new price.</p></section><section id="keys">
+    <h1>One more thing a payer has to survive
+      <small>The same field, written under two different names</small></h1>
+    <div class="panel">
+      <table>
+        <tr><th>written under</th><th>records</th><th>which</th></tr>
+        <tr><td class="mono">payment.mode</td><td>5</td><td>Agent3 Google Search API (Paid), Agent3 Google Search API (Free), Agent3 X API (Free), CryptoParadigm, pizza_seller_agent</td></tr>
+        <tr><td class="mono">payment.model</td><td>3</td><td>Telegram Content Search, Agent3 Web Reader, Agent3 Tavily Search</td></tr>
+        <tr><td class="mono">neither</td><td>1</td><td>Agent3 Telegram Notification</td></tr>
+      </table>
+    </div>
+    <p class="note">A caller reading only <span class="mono">payment.mode</span> sees nothing for
+    4 of them. <b>An absent key and a free service are the same value</b>, so those
+    records do not look unreadable. They look free.</p></section></div>
+<script>
+// One beat is shown per frame, chosen by the query string, so each still is deterministic.
+const params = new URLSearchParams(location.search);
+const beat = params.get('beat') || "listing";
+const target = document.getElementById(beat);
+if (target) { target.classList.add('on'); }
+const scroll = parseInt(params.get('scroll') || '0', 10);
+const term = document.getElementById('term');
+if (term && scroll) { term.scrollTop = scroll; }
+</script>
+</body></html>

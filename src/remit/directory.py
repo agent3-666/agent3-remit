@@ -14,11 +14,13 @@ Two things this module refuses to do, because both of them hide the problem it e
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 HUB_BASE = "https://a2a-hub-chi.vercel.app"
@@ -38,9 +40,42 @@ def _get_json(url: str, timeout: int = 25) -> Any:
         return hit[1]
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        payload = json.loads(response.read().decode())
+        raw = response.read()
+    payload = json.loads(raw.decode())
+    _snapshots[url] = Snapshot(
+        digest=hashlib.sha256(raw).hexdigest(),
+        read_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        bytes_read=len(raw),
+        url=url,
+    )
     _cache[url] = (now, payload)
     return payload
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """What the directory said, and when, fixed to a digest.
+
+    A settlement quotes a price that was published at a moment. Without pinning that moment, a
+    receipt says money moved but not what it was for: the listing could have changed since. The
+    digest is over the exact bytes the directory served.
+    """
+
+    digest: str
+    read_at: str
+    bytes_read: int
+    url: str
+
+    def as_dict(self) -> dict:
+        return {"digest": self.digest, "read_at": self.read_at, "bytes": self.bytes_read, "url": self.url}
+
+
+_snapshots: dict[str, Snapshot] = {}
+
+
+def snapshot_of(base: str = HUB_BASE) -> Snapshot | None:
+    """The snapshot the current records were read from."""
+    return _snapshots.get(f"{base}/api/resources")
 
 
 def cache_state() -> dict:
